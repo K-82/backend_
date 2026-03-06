@@ -35,6 +35,7 @@ await fastify.register(rateLimit, {
 
 // ─── Health check ──────────────────────────────────────────────────────────
 
+fastify.get('/', async () => ({ status: 'online', service: 'autoflow-backend' }))
 fastify.get('/health', async () => ({ status: 'ok', timestamp: new Date().toISOString() }))
 
 // ─── Routes ────────────────────────────────────────────────────────────────
