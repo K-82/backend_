@@ -1,6 +1,7 @@
 import { supabase } from './supabase.js'
 
 // ─── Find an available worker (active, alive, not busy) ────────────────────
+// Kept for backward-compatible exports used by admin.js and prompts.js
 export async function findAvailableWorker(mode = 'IMAGE') {
   const twoMinutesAgo = new Date(Date.now() - 2 * 60 * 1000).toISOString()
 
@@ -40,54 +41,105 @@ export async function releaseWorker(tabId) {
   await assignPendingPrompts()
 }
 
-// ─── Queue Processor — assign pending prompts to free workers ──────────────
+// ─── Queue Processor — assign pending prompts to ALL free workers in parallel
+//
+// HOW IT WORKS:
+// 1. Runs every 10s from server.js as a background safety net
+// 2. Also runs immediately when: new prompt created, task completes, task retried
+// 3. Fetches ALL free alive workers ONCE
+// 4. Fetches ALL pending unassigned prompts ONCE (limited to free worker count)
+// 5. Pre-pairs each prompt with a unique compatible worker IN MEMORY
+//    — this prevents any two prompts from being paired with the same worker
+//    — worker_type is checked here: IMAGE/VIDEO/ALL matched correctly
+// 6. Then assigns ALL pairs simultaneously using Promise.all (true parallel)
+// 7. Each DB update has .is('assigned_tab_id', null) as atomic guard
+//    — if two server processes race, only the first wins, second skips safely
+// ─────────────────────────────────────────────────────────────────────────────
 export async function assignPendingPrompts() {
-  // Get all unassigned pending prompts, oldest first
+  const twoMinutesAgo = new Date(Date.now() - 2 * 60 * 1000).toISOString()
+
+  // Step 1: Fetch ALL free alive workers at once
+  const { data: freeWorkers, error: workerError } = await supabase
+    .from('workers')
+    .select('*')
+    .eq('status', 'active')
+    .gte('last_ping', twoMinutesAgo)
+    .eq('current_load', 0)
+    .order('created_at', { ascending: true })
+
+  if (workerError || !freeWorkers || freeWorkers.length === 0) {
+    console.log('[Queue] No free workers available right now')
+    return
+  }
+
+  // Step 2: Fetch pending unassigned prompts — limit to free worker count
   const { data: pendingPrompts, error: promptError } = await supabase
     .from('prompts')
     .select('id, mode')
     .eq('status', 'pending')
     .is('assigned_tab_id', null)
     .order('created_at', { ascending: true })
+    .limit(freeWorkers.length)
 
   if (promptError || !pendingPrompts || pendingPrompts.length === 0) {
     return
   }
 
+  // Step 3: Pre-pair each prompt with a unique compatible worker IN MEMORY
+  // This is done BEFORE going parallel so no two prompts ever get the same worker
+  // worker_type matching:
+  //   IMAGE prompt → needs worker_type = 'IMAGE' or 'ALL'
+  //   VIDEO prompt → needs worker_type = 'VIDEO' or 'ALL'
+  const usedWorkerIds = new Set()
+  const pairs = []
+
   for (const prompt of pendingPrompts) {
-    const worker = await findAvailableWorker(prompt.mode)
-
+    const worker = freeWorkers.find(w =>
+      !usedWorkerIds.has(w.id) &&
+      (w.worker_type === prompt.mode || w.worker_type === 'ALL')
+    )
     if (!worker) {
-      // No more free workers, remaining prompts stay in queue
-      console.log(`[Queue] No free workers available, ${pendingPrompts.length} prompts waiting`)
-      break
+      console.log(`[Queue] No compatible free worker for prompt ${prompt.id} (${prompt.mode})`)
+      continue
     }
-
-    // Assign the prompt to this worker
-    const { error: updateError } = await supabase
-      .from('prompts')
-      .update({
-        assigned_tab_id: worker.tab_id,
-        machine_id: worker.machine_id,
-        updated_at: new Date().toISOString()
-      })
-      .eq('id', prompt.id)
-      .eq('status', 'pending')
-      .is('assigned_tab_id', null)
-
-    if (!updateError) {
-      // Mark worker as busy
-      await markWorkerBusy(worker.id)
-      console.log(`[Queue] Assigned prompt ${prompt.id} to tab ${worker.tab_id}`)
-    }
+    usedWorkerIds.add(worker.id) // lock this worker — no other prompt can take it
+    pairs.push({ prompt, worker })
   }
+
+  if (pairs.length === 0) return
+
+  console.log(`[Queue] ${freeWorkers.length} free workers, ${pendingPrompts.length} pending — assigning ${pairs.length} pairs in parallel`)
+
+  // Step 4: Assign ALL pairs simultaneously — true parallel
+  await Promise.all(
+    pairs.map(async ({ prompt, worker }) => {
+      // Atomic guard: .is('assigned_tab_id', null) ensures if two server
+      // processes race, only the first one wins — second does nothing safely
+      const { error } = await supabase
+        .from('prompts')
+        .update({
+          assigned_tab_id: worker.tab_id,
+          machine_id: worker.machine_id,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', prompt.id)
+        .eq('status', 'pending')
+        .is('assigned_tab_id', null)
+
+      if (!error) {
+        await markWorkerBusy(worker.id)
+        console.log(`[Queue] ✅ prompt ${prompt.id} (${prompt.mode}) → tab ${worker.tab_id}`)
+      } else {
+        console.log(`[Queue] ⚠️ prompt ${prompt.id} skipped — already assigned`)
+      }
+    })
+  )
 }
 
 // ─── Complete a task — update prompt with results and release worker ───────
 export async function completeTask({ tab_id, prompt_id, status, output_urls, failure_reason }) {
   const finalStatus = status || 'completed'
 
-  // Build the update object
   const updateData = {
     status: finalStatus,
     updated_at: new Date().toISOString()
@@ -98,7 +150,6 @@ export async function completeTask({ tab_id, prompt_id, status, output_urls, fai
     updateData.download_status = 'not_downloaded'
     updateData.failure_reason = null
   } else if (finalStatus === 'failed') {
-    // Set failure reason message from the worker/DB
     updateData.failure_reason = failure_reason || 'Generation failed — unknown error'
     updateData.output_urls = []
   }
