@@ -23,7 +23,13 @@ const fastify = Fastify({
 // ─── Plugins ───────────────────────────────────────────────────────────────
 
 await fastify.register(cors, {
-  origin: true,
+  origin: [
+    'https://frontend-flax-ten-15ozbodi2i.vercel.app',
+    'https://frontend-git-main-joshanraza711-webs-projects.vercel.app',
+    'https://frontend-rmmgb7rbv-joshanraza711-webs-projects.vercel.app',
+    'http://localhost:5173',
+    'http://localhost:3000'
+  ],
   credentials: true
 })
 
