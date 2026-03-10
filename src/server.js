@@ -79,7 +79,7 @@ fastify.setErrorHandler((error, request, reply) => {
 const PORT = parseInt(process.env.PORT || '3000', 10)
 
 try {
-  await fastify.listen({ port: PORT })
+  await fastify.listen({ port: PORT, host: '0.0.0.0' })
   console.log(`\n🚀 Server running on http://localhost:${PORT}`)
   console.log(`📋 Queue processor active — checking every 10s\n`)
 } catch (err) {
