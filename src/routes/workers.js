@@ -1,6 +1,6 @@
 import { supabase } from '../services/supabase.js'
 import { authMiddleware } from '../middleware/auth.js'
-import { completeTask, retryPrompt, assignPendingPrompts } from '../services/worker.js'
+import { completeTask, retryPrompt, assignPendingPrompts, releaseWorker } from '../services/worker.js'
 
 export default async function workerRoutes(fastify) {
   // ─── List active workers (existing) ──────────────────────────────────────

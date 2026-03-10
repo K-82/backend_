@@ -16,10 +16,3 @@ RETURNS void AS $$
   SET current_load = GREATEST(0, current_load + delta)
   WHERE tab_id = worker_tab_id;
 $$ LANGUAGE sql;
-
-CREATE OR REPLACE FUNCTION increment_worker_load(worker_tab_id text, delta integer)
-RETURNS void AS $$
-  UPDATE public.workers 
-  SET current_load = GREATEST(0, current_load + delta)
-  WHERE tab_id = worker_tab_id;
-$$ LANGUAGE sql;
