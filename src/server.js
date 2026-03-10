@@ -28,6 +28,8 @@ await fastify.register(cors, {
     'https://frontend-app-test-sage.vercel.app',
     'https://frontend-app-test-git-main-joshanraza711-webs-projects.vercel.app',
     'https://frontend-app-test-rdv59pa01-joshanraza711-webs-projects.vercel.app',
+    'https://frontend-alpha-three-39.vercel.app',
+    'https://labs.google',
     'http://localhost:5173',
     'http://localhost:3000'
   ],
