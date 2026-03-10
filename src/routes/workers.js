@@ -140,4 +140,30 @@ export default async function workerRoutes(fastify) {
       message: 'Prompt has been re-queued for processing'
     })
   })
+
+  // ─── Release — extension notifies backend that a worker is free ─────────
+  // Lightweight: only releases the worker + triggers assignPendingPrompts()
+  // Does NOT update prompt data (extension already did that directly in Supabase)
+  fastify.post('/workers/release', {
+    schema: {
+      body: {
+        type: 'object',
+        required: ['tab_id'],
+        properties: {
+          tab_id: { type: 'string' }
+        }
+      }
+    }
+  }, async (request, reply) => {
+    const { tab_id } = request.body
+
+    try {
+      await releaseWorker(tab_id)
+      console.log(`[Queue] Worker ${tab_id} released by extension — reassigning`)
+      return reply.send({ success: true, message: 'Worker released and queue processed' })
+    } catch (err) {
+      console.error(`[Queue] Release failed for ${tab_id}:`, err.message)
+      return reply.code(500).send({ success: false, error: err.message })
+    }
+  })
 }
