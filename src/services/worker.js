@@ -94,9 +94,12 @@ export async function assignPendingPrompts() {
   const pairs = []
 
   for (const prompt of pendingPrompts) {
+    // IMAGE_EDIT is treated the same as IMAGE for worker matching
+    // So IMAGE and ALL workers can handle IMAGE_EDIT prompts, but VIDEO workers cannot
+    const effectiveMode = prompt.mode === 'IMAGE_EDIT' ? 'IMAGE' : prompt.mode
     const worker = freeWorkers.find(w =>
       !usedWorkerIds.has(w.id) &&
-      (w.worker_type === prompt.mode || w.worker_type === 'ALL')
+      (w.worker_type === effectiveMode || w.worker_type === 'ALL')
     )
     if (!worker) {
       console.log(`[Queue] No compatible free worker for prompt ${prompt.id} (${prompt.mode})`)

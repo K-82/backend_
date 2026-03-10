@@ -1,6 +1,6 @@
 import { supabase } from '../services/supabase.js'
 import { adminMiddleware } from '../middleware/auth.js'
-import { deletePromptFiles } from '../services/storage.js'
+import { deletePromptFiles, processBase64Image } from '../services/storage.js'
 import { assignPendingPrompts, retryPrompt } from '../services/worker.js'
 
 export default async function adminRoutes(fastify) {
@@ -109,24 +109,40 @@ export default async function adminRoutes(fastify) {
         properties: {
           prompt: { type: 'string' },
           user_id: { type: 'string' },
-          mode: { type: 'string', enum: ['IMAGE', 'VIDEO'], default: 'IMAGE' },
+          mode: { type: 'string', enum: ['IMAGE', 'VIDEO', 'IMAGE_EDIT'], default: 'IMAGE' },
           ratio: { type: 'string', enum: ['LANDSCAPE', 'PORTRAIT'], default: 'LANDSCAPE' },
-          worker_id: { type: 'string' }
+          worker_id: { type: 'string' },
+          input_image_url: { type: 'string' }
         }
       }
     }
   }, async (request, reply) => {
-    const { prompt, user_id, mode = 'IMAGE', ratio = 'LANDSCAPE' } = request.body
+    const { prompt, user_id, mode = 'IMAGE', ratio = 'LANDSCAPE', input_image_url } = request.body
 
     // Always queue — assigned_tab_id stays null until queue processor assigns it
+    const promptData = {
+      user_id, prompt, mode, ratio, resolution: '1', model: 'default',
+      status: 'pending', download_status: 'not_downloaded', output_urls: [],
+      assigned_tab_id: null,
+      machine_id: null
+    }
+
+    // Save input image URL for IMAGE_EDIT mode
+    if (mode === 'IMAGE_EDIT' && input_image_url) {
+      if (input_image_url.startsWith('data:image/')) {
+        try {
+          promptData.input_image_url = await processBase64Image(input_image_url)
+        } catch (err) {
+          return reply.code(400).send({ success: false, error: err.message })
+        }
+      } else {
+        promptData.input_image_url = input_image_url
+      }
+    }
+
     const { data, error } = await supabase
       .from('prompts')
-      .insert({
-        user_id, prompt, mode, ratio, resolution: '1', model: 'default',
-        status: 'pending', download_status: 'not_downloaded', output_urls: [],
-        assigned_tab_id: null,
-        machine_id: null
-      })
+      .insert(promptData)
       .select()
       .single()
 

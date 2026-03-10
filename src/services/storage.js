@@ -32,3 +32,27 @@ export async function getPromptFileUrls(promptId) {
     url: `${SUPABASE_URL}/storage/v1/object/public/${BUCKET}/${promptId}/${f.name}`
   }))
 }
+
+// Helper to upload base64 images to Supabase storage
+export async function processBase64Image(base64Str) {
+  const matches = base64Str.match(/^data:image\/([a-zA-Z0-9+]+);base64,(.+)$/)
+  if (!matches || matches.length !== 3) {
+    throw new Error('Invalid base64 image data')
+  }
+  const extension = matches[1] === 'jpeg' ? 'jpg' : matches[1]
+  const buffer = Buffer.from(matches[2], 'base64')
+  const filename = `uploads/${Date.now()}_${Math.random().toString(36).substring(7)}.${extension}`
+
+  const { error } = await supabase.storage
+    .from(BUCKET)
+    .upload(filename, buffer, {
+      contentType: `image/${extension}`
+    })
+
+  if (error) {
+    throw new Error('Failed to upload image: ' + error.message)
+  }
+
+  const { data: { publicUrl } } = supabase.storage.from(BUCKET).getPublicUrl(filename)
+  return publicUrl
+}

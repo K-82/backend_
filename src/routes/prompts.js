@@ -1,7 +1,7 @@
 import { supabase } from '../services/supabase.js'
 import { authMiddleware } from '../middleware/auth.js'
 import { assignPendingPrompts } from '../services/worker.js'
-import { deletePromptFiles } from '../services/storage.js'
+import { deletePromptFiles, processBase64Image } from '../services/storage.js'
 
 export default async function promptRoutes(fastify) {
   // Create prompt — always queued, queue processor assigns to a free worker
@@ -14,14 +14,15 @@ export default async function promptRoutes(fastify) {
         required: ['prompt'],
         properties: {
           prompt: { type: 'string', minLength: 1 },
-          mode: { type: 'string', enum: ['IMAGE', 'VIDEO'], default: 'IMAGE' },
+          mode: { type: 'string', enum: ['IMAGE', 'VIDEO', 'IMAGE_EDIT'], default: 'IMAGE' },
           ratio: { type: 'string', enum: ['LANDSCAPE', 'PORTRAIT'], default: 'LANDSCAPE' },
-          model: { type: 'string', default: 'default' }
+          model: { type: 'string', default: 'default' },
+          input_image_url: { type: 'string' }
         }
       }
     }
   }, async (request, reply) => {
-    const { prompt, mode = 'IMAGE', ratio = 'LANDSCAPE', model = 'default' } = request.body
+    const { prompt, mode = 'IMAGE', ratio = 'LANDSCAPE', model = 'default', input_image_url } = request.body
     const userId = request.user.id
 
     // Insert into queue — assigned_tab_id stays null until queue processor assigns it
@@ -37,6 +38,19 @@ export default async function promptRoutes(fastify) {
       output_urls: [],
       assigned_tab_id: null,
       machine_id: null
+    }
+
+    // Save input image URL for IMAGE_EDIT mode
+    if (mode === 'IMAGE_EDIT' && input_image_url) {
+      if (input_image_url.startsWith('data:image/')) {
+        try {
+          promptData.input_image_url = await processBase64Image(input_image_url)
+        } catch (err) {
+          return reply.code(400).send({ success: false, error: err.message })
+        }
+      } else {
+        promptData.input_image_url = input_image_url
+      }
     }
 
     const { data, error } = await supabase
@@ -65,7 +79,7 @@ export default async function promptRoutes(fastify) {
           page: { type: 'integer', default: 1 },
           limit: { type: 'integer', default: 20, maximum: 100 },
           status: { type: 'string' },
-          mode: { type: 'string', enum: ['IMAGE', 'VIDEO'] }
+          mode: { type: 'string', enum: ['IMAGE', 'VIDEO', 'IMAGE_EDIT'] }
         }
       }
     }

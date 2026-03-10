@@ -12,6 +12,7 @@ import adminRoutes from './routes/admin.js'
 import { assignPendingPrompts } from './services/worker.js'
 
 const fastify = Fastify({
+  bodyLimit: 10 * 1024 * 1024, // 10MB for base64 image uploads
   logger: {
     transport: {
       target: 'pino-pretty',
