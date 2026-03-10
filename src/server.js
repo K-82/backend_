@@ -25,10 +25,9 @@ const fastify = Fastify({
 
 await fastify.register(cors, {
   origin: [
-    'https://frontend-flax-ten-15ozbodi2i.vercel.app',
-    'https://frontend-git-main-joshanraza711-webs-projects.vercel.app',
-    'https://frontend-rmmgb7rbv-joshanraza711-webs-projects.vercel.app',
-    'https://frontend-pvka9bm73-joshanraza711-webs-projects.vercel.app',
+    'https://frontend-app-test-sage.vercel.app',
+    'https://frontend-app-test-git-main-joshanraza711-webs-projects.vercel.app',
+    'https://frontend-app-test-rdv59pa01-joshanraza711-webs-projects.vercel.app',
     'http://localhost:5173',
     'http://localhost:3000'
   ],
