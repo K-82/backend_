@@ -166,4 +166,79 @@ export default async function promptRoutes(fastify) {
 
     return reply.send({ success: true, data: { deleted: true } })
   })
+
+  // Toggle Pin/Keep status
+  fastify.patch('/prompts/:id/pin', {
+    preHandler: authMiddleware,
+    schema: {
+      body: {
+        type: 'object',
+        required: ['is_pinned'],
+        properties: {
+          is_pinned: { type: 'boolean' }
+        }
+      }
+    }
+  }, async (request, reply) => {
+    const { id } = request.params
+    const { is_pinned } = request.body
+    const userId = request.user.id
+
+    // 1. Verify ownership and get mode
+    const { data: prompt, error: fetchErr } = await supabase
+      .from('prompts')
+      .select('id, mode')
+      .eq('id', id)
+      .eq('user_id', userId)
+      .single()
+
+    if (fetchErr || !prompt) {
+      return reply.code(404).send({ success: false, error: 'Prompt not found' })
+    }
+
+    if (is_pinned) {
+      // 2. Check limits if pinning
+      const isImage = prompt.mode === 'IMAGE' || prompt.mode === 'IMAGE_EDIT'
+      const limit = isImage ? 10 : 5
+      
+      let query = supabase
+        .from('prompts')
+        .select('id', { count: 'exact', head: true })
+        .eq('user_id', userId)
+        .eq('is_pinned', true)
+
+      if (isImage) {
+        query = query.in('mode', ['IMAGE', 'IMAGE_EDIT'])
+      } else {
+        query = query.eq('mode', 'VIDEO')
+      }
+
+      const { count, error: countErr } = await query
+
+      if (countErr) {
+        return reply.code(500).send({ success: false, error: 'Failed to verify limits' })
+      }
+
+      if (count >= limit) {
+        return reply.code(400).send({ 
+          success: false, 
+          error: `Pin limit reached. You can only pin up to ${limit} ${isImage ? 'images' : 'videos'}.` 
+        })
+      }
+    }
+
+    // 3. Update status
+    const { data, error: updateErr } = await supabase
+      .from('prompts')
+      .update({ is_pinned })
+      .eq('id', id)
+      .select()
+      .single()
+
+    if (updateErr) {
+      return reply.code(500).send({ success: false, error: updateErr.message })
+    }
+
+    return reply.send({ success: true, data })
+  })
 }

@@ -10,6 +10,8 @@ import mediaRoutes from './routes/media.js'
 import workerRoutes from './routes/workers.js'
 import adminRoutes from './routes/admin.js'
 import { assignPendingPrompts } from './services/worker.js'
+import { supabase } from './services/supabase.js'
+import { deletePromptFiles } from './services/storage.js'
 
 const fastify = Fastify({
   bodyLimit: 10 * 1024 * 1024, // 10MB for base64 image uploads
@@ -65,6 +67,44 @@ setInterval(async () => {
     console.error('[Queue] Background processor error:', err.message)
   }
 }, 10_000)
+
+// ─── Auto-Cleanup Processor ───────────────────────────────────────────────
+// Run every hour to delete unpinned prompts older than 24h
+setInterval(async () => {
+  try {
+    const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
+    
+    // Find expired prompts
+    const { data: expiredPrompts, error } = await supabase
+      .from('prompts')
+      .select('id')
+      .eq('is_pinned', false)
+      .lt('created_at', yesterday)
+      
+    if (error) throw error
+    if (!expiredPrompts || expiredPrompts.length === 0) return
+    
+    console.log(`🧹 Auto-cleanup: Found ${expiredPrompts.length} expired prompts`)
+    
+    // Delete files from storage
+    for (const prompt of expiredPrompts) {
+      await deletePromptFiles(prompt.id)
+    }
+    
+    // Delete from DB (storage DB cascade isn't guaranteed if we handle files manually)
+    const ids = expiredPrompts.map(p => p.id)
+    const { error: deleteErr } = await supabase
+      .from('prompts')
+      .delete()
+      .in('id', ids)
+      
+    if (deleteErr) throw deleteErr
+    console.log(`✅ Auto-cleanup: Deleted ${ids.length} expired prompts`)
+    
+  } catch (err) {
+    console.error('[Cleanup] Auto-cleanup error:', err.message)
+  }
+}, 60 * 60 * 1000)
 
 // ─── Error Handler ─────────────────────────────────────────────────────────
 
