@@ -117,6 +117,47 @@ export default async function promptRoutes(fastify) {
     })
   })
 
+  // Get user stats for Profile Screen
+  fastify.get('/prompts/stats', {
+    preHandler: authMiddleware
+  }, async (request, reply) => {
+    const userId = request.user.id
+
+    const { data: prompts, error } = await supabase
+      .from('prompts')
+      .select('status, mode, is_pinned')
+      .eq('user_id', userId)
+
+    if (error) {
+      return reply.code(400).send({ success: false, error: error.message })
+    }
+
+    const stats = {
+      total: prompts.length,
+      completed: 0,
+      failed: 0,
+      pending: 0,
+      images: 0,
+      videos: 0,
+      edits: 0,
+      pinned: 0
+    }
+
+    for (const p of prompts) {
+      if (p.status === 'completed') stats.completed++
+      else if (p.status === 'failed') stats.failed++
+      else stats.pending++
+      
+      if (p.mode === 'IMAGE') stats.images++
+      else if (p.mode === 'VIDEO') stats.videos++
+      else if (p.mode === 'IMAGE_EDIT') stats.edits++
+
+      if (p.is_pinned) stats.pinned++
+    }
+
+    return reply.send({ success: true, data: stats })
+  })
+
   // Get single prompt
   fastify.get('/prompts/:id', {
     preHandler: authMiddleware
