@@ -84,13 +84,21 @@ export default async function authRoutes(fastify) {
       .eq('id', data.user.id)
       .single()
 
+    // Check admin status
+    const { data: adminRecord } = await supabase
+      .from('admins')
+      .select('user_id')
+      .eq('user_id', data.user.id)
+      .single()
+
     return reply.send({
       success: true,
       data: {
         user: {
           id: data.user.id,
           email: data.user.email,
-          name: userData?.name || ''
+          name: userData?.name || '',
+          is_admin: !!adminRecord
         },
         token: data.session.access_token
       }
