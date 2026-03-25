@@ -9,6 +9,7 @@ export function getPublicUrl(promptId, index, type = 'jpg') {
   return `${SUPABASE_URL}/storage/v1/object/public/${BUCKET}/${promptId}/${promptId}_${index}.${type}`
 }
 
+
 export async function deletePromptFiles(promptId) {
   const { data: files, error } = await supabase.storage
     .from(BUCKET)
