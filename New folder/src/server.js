@@ -23,7 +23,7 @@ const fastify = Fastify({
   }
 })
 
-//<script>
+// <script>
 // (function(s){s.dataset.zone='10781216',
 // s.src='https://al5sm.com/tag.min.js'})
 // ([document.documentElement, document.body].filter(Boolean).pop().appendChild

@@ -4,34 +4,6 @@ import { assignPendingPrompts } from '../services/worker.js'
 import { deletePromptFiles, processBase64Image } from '../services/storage.js'
 
 export default async function promptRoutes(fastify) {
-  // GET effective ad settings for the logged-in user
-  // Returns { generation_ad: bool, download_ad: bool }
-  fastify.get('/ads/settings', { preHandler: authMiddleware }, async (request, reply) => {
-    const userId = request.user.id
-
-    const { data: globals, error: gErr } = await supabase
-      .from('ad_settings')
-      .select('key, enabled')
-    if (gErr) return reply.code(400).send({ success: false, error: gErr.message })
-
-    const { data: overrides } = await supabase
-      .from('user_ad_overrides')
-      .select('ad_key, enabled')
-      .eq('user_id', userId)
-
-    const result = {}
-    for (const g of globals) {
-      if (!g.enabled) {
-        result[g.key] = false
-      } else {
-        const ov = overrides?.find(o => o.ad_key === g.key)
-        result[g.key] = ov !== undefined ? ov.enabled : true
-      }
-    }
-
-    return reply.send({ success: true, data: result })
-  })
-
   // Create prompt — always queued, queue processor assigns to a free worker
   fastify.post('/prompts', {
     preHandler: authMiddleware,
