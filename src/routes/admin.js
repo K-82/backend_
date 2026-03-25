@@ -202,15 +202,20 @@ export default async function adminRoutes(fastify) {
     const { key } = request.params
     const { enabled } = request.body
 
+    const validKeys = ['generation_ad', 'download_ad']
+    if (!validKeys.includes(key)) {
+      return reply.code(400).send({ success: false, error: `key must be one of: ${validKeys.join(', ')}` })
+    }
+
     const { data, error } = await supabase
       .from('ad_settings')
       .update({ enabled, updated_by: request.user.id })
       .eq('key', key)
       .select()
-      .single()
 
     if (error) return reply.code(400).send({ success: false, error: error.message })
-    return reply.send({ success: true, data })
+    const row = Array.isArray(data) ? data[0] : data
+    return reply.send({ success: true, data: row })
   })
 
   // GET all per-user overrides (optionally filter)
@@ -258,17 +263,32 @@ export default async function adminRoutes(fastify) {
       return reply.code(400).send({ success: false, error: `ad_key must be one of: ${validKeys.join(', ')}` })
     }
 
-    const { data, error } = await supabase
+    // Try update first (exists), then insert (new) — avoids RLS issues with upsert
+    const { data: existing } = await supabase
       .from('user_ad_overrides')
-      .upsert(
-        { user_id, ad_key, enabled, updated_by: request.user.id },
-        { onConflict: 'user_id,ad_key' }
-      )
-      .select()
-      .single()
+      .select('id')
+      .eq('user_id', user_id)
+      .eq('ad_key', ad_key)
+      .maybeSingle()
 
-    if (error) return reply.code(400).send({ success: false, error: error.message })
-    return reply.send({ success: true, data })
+    let result
+    if (existing) {
+      result = await supabase
+        .from('user_ad_overrides')
+        .update({ enabled, updated_by: request.user.id })
+        .eq('user_id', user_id)
+        .eq('ad_key', ad_key)
+        .select()
+    } else {
+      result = await supabase
+        .from('user_ad_overrides')
+        .insert({ user_id, ad_key, enabled, updated_by: request.user.id })
+        .select()
+    }
+
+    if (result.error) return reply.code(400).send({ success: false, error: result.error.message })
+    const row = Array.isArray(result.data) ? result.data[0] : result.data
+    return reply.send({ success: true, data: row })
   })
 
   // DELETE user-level override (reverts to global)
