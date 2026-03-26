@@ -216,8 +216,8 @@ export default async function adminRoutes(fastify) {
       .select()
 
     if (error) return reply.code(400).send({ success: false, error: error.message })
-    const row = Array.isArray(data) ? data[0] : data
-    return reply.send({ success: true, data: row })
+    // const row = Array.isArray(data) ? data[0] : data
+    return reply.send({ success: true, data })
   })
 
   // GET all per-user overrides (optionally filter)
