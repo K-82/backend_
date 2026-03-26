@@ -42,10 +42,11 @@ export default async function adminRoutes(fastify) {
       .from('workers')
       .upsert({ project_id, worker_type, machine_id: machine_id || project_id, status: 'active', tab_id: project_id })
       .select()
-      .single()
+      // .single()
 
+      const row = Array.isArray(data ? data[0] :data)
     if (error) return reply.code(400).send({ success: false, error: error.message })
-    return reply.code(201).send({ success: true, data })
+    return reply.code(201).send({ success: true, data: row })
   })
 
   // Delete worker
@@ -144,7 +145,7 @@ export default async function adminRoutes(fastify) {
       .from('prompts')
       .insert(promptData)
       .select()
-      .single()
+      // .single()
 
     if (error) return reply.code(400).send({ success: false, error: error.message })
 
@@ -158,7 +159,8 @@ export default async function adminRoutes(fastify) {
   fastify.patch('/admin/prompts/:id/retry', { preHandler: adminMiddleware }, async (request, reply) => {
     const { id } = request.params
 
-    const { data: prompt } = await supabase.from('prompts').select('id').eq('id', id).single()
+    const { data: prompt } = await supabase
+    .from('prompts').select('id').eq('id', id).single()
     if (!prompt) return reply.code(404).send({ success: false, error: 'Prompt not found' })
 
     const result = await retryPrompt(id)
